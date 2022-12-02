@@ -78,7 +78,6 @@ for (let i = 0; i < position.count; i++) {
 
     skinIndices.push(skinIndex, skinIndex + 1, 0, 0);
     skinWeights.push(1 - skinWeight, skinWeight, 0, 0);
-
 }
 
 geometry.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(skinIndices, 4));
@@ -86,24 +85,32 @@ geometry.setAttribute("skinWeight", new THREE.Float32BufferAttribute(skinWeights
 
 // create skinned mesh and skeleton
 
-const mesh = new THREE.SkinnedMesh(geometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+const skinnedMesh = new THREE.SkinnedMesh(geometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+skinnedMesh.name = "skinnedMesh-cylinder";
+skinnedMesh.position.y = 3;
+skinnedMesh.position.x = 3;
 const skeleton = new THREE.Skeleton([bone1, bone2]);
 
 // see example from THREE.Skeleton
 
 const rootBone = skeleton.bones[0];
-mesh.add(rootBone);
+skinnedMesh.add(rootBone);
 
 // bind the skeleton to the mesh
 
-mesh.bind(skeleton);
+skinnedMesh.bind(skeleton);
 
 // move the bones and manipulate the model
 
 skeleton.bones[0].rotation.x = -0.1;
 skeleton.bones[1].rotation.x = 0.2;
 
-scene.add(mesh);
+scene.add(skinnedMesh);
+
+const cylinderShadow = new (ShadowMesh as any)(skinnedMesh) as ShadowMesh;
+scene.add(cylinderShadow);
+
+cylinderShadow.update(groundPlane, lightPosition4D);
 
 // RED CUBE and CUBE's SHADOW
 const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);

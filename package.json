@@ -1,7 +1,8 @@
 {
   "name": "three-shadowmesh-test",
   "scripts": {
-    "start": "webpack serve --mode development"
+    "start": "webpack serve --mode development",
+    "build": "webpack --mode production"
   },
   "devDependencies": {
     "@types/three": "^0.146.0",
@@ -20,6 +21,7 @@
     "webpack-dev-server": "^4.11.1"
   },
   "dependencies": {
+    "ammojs-typed": "^1.0.6",
     "three": "^0.146.0"
   }
 }

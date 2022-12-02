@@ -1,159 +1,118 @@
+import Ammo from "ammojs-typed";
 import * as THREE from "three";
+import { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { OutlineEffect } from "three/examples/jsm/effects/OutlineEffect";
+import { MMDLoader } from "three/examples/jsm/loaders/MMDLoader";
 import { ShadowMesh } from "three/examples/jsm/objects/ShadowMesh";
 
-let screenWidth = window.innerWidth;
-let screenHeight = window.innerHeight;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(55, screenWidth / screenHeight, 1, 3000);
 const clock = new THREE.Clock();
-const renderer = new THREE.WebGLRenderer();
 
-const sunLight = new THREE.DirectionalLight("rgb(255,255,255)", 1);
-const normalVector = new THREE.Vector3(0, 1, 0);
-const planeConstant = 0.01; // this value must be slightly higher than the groundMesh's y position of 0.0
-const groundPlane = new THREE.Plane(normalVector, planeConstant);
-const lightPosition4D = new THREE.Vector4();
-let verticalAngle = 0;
-let horizontalAngle = 0;
-let frameTime = 0;
-const pi2 = Math.PI * 2;
+Ammo(Ammo).then(() => {
+    // #region init
+    const container = document.getElementById("game_view")!;
 
-scene.background = new THREE.Color(0x0096ff);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.z = 30;
 
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setSize(screenWidth, screenHeight);
-document.getElementById("game_view")!.appendChild(renderer.domElement);
-window.addEventListener("resize", onWindowResize);
+    //#region scene
 
-camera.position.set(0, 2.5, 10);
-scene.add(camera);
-onWindowResize();
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
 
-sunLight.position.set(5, 7, -1);
-sunLight.lookAt(scene.position);
-scene.add(sunLight);
+    const gridHelper = new THREE.PolarGridHelper(30, 0);
+    gridHelper.position.y = -10;
+    scene.add(gridHelper);
 
-lightPosition4D.x = sunLight.position.x;
-lightPosition4D.y = sunLight.position.y;
-lightPosition4D.z = sunLight.position.z;
-// amount of light-ray divergence. Ranging from:
-// 0.001 = sunlight(min divergence) to 1.0 = pointlight(max divergence)
-lightPosition4D.w = 0.001; // must be slightly greater than 0, due to 0 causing matrixInverse errors
+    const ambient = new THREE.AmbientLight(0x666666);
+    scene.add(ambient);
 
-// GROUND
-const groundGeometry = new THREE.BoxGeometry(30, 0.01, 40);
-const groundMaterial = new THREE.MeshLambertMaterial({ color: "rgb(0,130,0)" });
-const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-groundMesh.position.y = 0.0; //this value must be slightly lower than the planeConstant (0.01) parameter above
-scene.add(groundMesh);
+    const directionalLight = new THREE.DirectionalLight(0x887766);
+    directionalLight.position.set(-1, 1, 1).normalize();
+    scene.add(directionalLight);
 
-// Create bone
-const bone1 = new THREE.Bone();
-const bone2 = new THREE.Bone();
-bone2.position.set(0, 2, 0);
-bone1.add(bone2);
+    //#endregion
 
-// Create skinned mesh
-const geometry = new THREE.CylinderGeometry(5, 5, 5, 5, 15, false, 5, 30);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
 
-// create the skin indices and skin weights manually
-// (typically a loader would read this data from a 3D model for you)
+    const effect = new OutlineEffect(renderer);
 
-const position = geometry.attributes.position;
+    //#region model
 
-const vertex = new THREE.Vector3();
+    function onProgress(xhr: ProgressEvent): void {
+        if (xhr.lengthComputable) {
+            const percentComplete = xhr.loaded / xhr.total * 100;
+            console.log(Math.round(percentComplete) + "% downloaded");
+        }
+    }
 
-const skinIndices = [];
-const skinWeights = [];
+    const modelFile = "https://threejs.org/examples/models/mmd/miku/miku_v2.pmd";
+    const vmdFiles = [ "https://threejs.org/examples/models/mmd/vmds/wavefile_v2.vmd" ];
 
-for (let i = 0; i < position.count; i++) {
-    vertex.fromBufferAttribute(position, i);
+    const helper = new MMDAnimationHelper({
+        afterglow: 2.0
+    });
 
-    // compute skinIndex and skinWeight based on some configuration data
-    const y = (vertex.y + 2.5) / 5; // 0..1
+    const loader = new MMDLoader();
 
-    const skinIndex = Math.floor(y / 0.25);
-    const skinWeight = (y % 0.25) / 0.25;
+    let shadowMesh: ShadowMesh;
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0.01 + -10);
+    const lightPosition = new THREE.Vector4(5, 7, -1, 0.001);
 
-    skinIndices.push(skinIndex, skinIndex + 1, 0, 0);
-    skinWeights.push(1 - skinWeight, skinWeight, 0, 0);
-}
+    loader.loadWithAnimation(modelFile, vmdFiles, (mmd) => {
+        const mesh = mmd.mesh;
+        mesh.position.y = -10;
+        scene.add(mesh);
 
-geometry.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(skinIndices, 4));
-geometry.setAttribute("skinWeight", new THREE.Float32BufferAttribute(skinWeights, 4));
+        shadowMesh = new (ShadowMesh as any)(mesh) as ShadowMesh;
 
-// create skinned mesh and skeleton
+        scene.add(shadowMesh);
 
-const skinnedMesh = new THREE.SkinnedMesh(geometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
-skinnedMesh.name = "skinnedMesh-cylinder";
-skinnedMesh.position.y = 3;
-skinnedMesh.position.x = 3;
-const skeleton = new THREE.Skeleton([bone1, bone2]);
+        helper.add(mesh, {
+            animation: mmd.animation,
+            physics: true
+        });
 
-// see example from THREE.Skeleton
+        const ikHelper = helper.objects.get(mesh)!.ikSolver.createHelper();
+        ikHelper.visible = false;
+        scene.add(ikHelper);
 
-const rootBone = skeleton.bones[0];
-skinnedMesh.add(rootBone);
+        const physicsHelper = helper.objects.get(mesh)!.physics!.createHelper();
+        physicsHelper.visible = false;
+        scene.add(physicsHelper);
+    }, onProgress, undefined);
 
-// bind the skeleton to the mesh
+    //#endregion
 
-skinnedMesh.bind(skeleton);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.minDistance = 10;
+    controls.maxDistance = 100;
 
-// move the bones and manipulate the model
+    window.addEventListener("resize", onWindowResize);
+    // #endregion
 
-skeleton.bones[0].rotation.x = -0.1;
-skeleton.bones[1].rotation.x = 0.2;
+    animate();
 
-scene.add(skinnedMesh);
+    function onWindowResize(): void {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
 
-const cylinderShadow = new (ShadowMesh as any)(skinnedMesh) as ShadowMesh;
-scene.add(cylinderShadow);
+        effect.setSize(window.innerWidth, window.innerHeight);
+    }
 
-cylinderShadow.update(groundPlane, lightPosition4D);
+    //
 
-// RED CUBE and CUBE's SHADOW
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-const cubeMaterial = new THREE.MeshLambertMaterial({ color: "rgb(255,0,0)", emissive: 0x200000 });
-const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-cube.position.z = -1;
-scene.add(cube);
+    function animate(): void {
+        requestAnimationFrame(animate);
+        render();
+    }
 
-const cubeShadow = new (ShadowMesh as any)(cube) as ShadowMesh;
-scene.add(cubeShadow);
-
-animate();
-
-function animate(): void {
-    requestAnimationFrame(animate);
-
-    frameTime = clock.getDelta();
-
-    cube.rotation.x += 1.0 * frameTime;
-    cube.rotation.y += 1.0 * frameTime;
-
-    horizontalAngle += 0.5 * frameTime;
-    if (horizontalAngle > pi2)
-        horizontalAngle -= pi2;
-    cube.position.x = Math.sin(horizontalAngle) * 4;
-
-    verticalAngle += 1.5 * frameTime;
-    if (verticalAngle > pi2)
-        verticalAngle -= pi2;
-    cube.position.y = Math.sin(verticalAngle) * 2 + 2.9;
-
-    // update the ShadowMeshes to follow their shadow-casting objects
-    cubeShadow.update(groundPlane, lightPosition4D);
-
-    renderer.render(scene, camera);
-}
-
-function onWindowResize(): void {
-    screenWidth = window.innerWidth;
-    screenHeight = window.innerHeight;
-
-    renderer.setSize(screenWidth, screenHeight);
-
-    camera.aspect = screenWidth / screenHeight;
-    camera.updateProjectionMatrix();
-}
+    function render(): void {
+        helper.update(clock.getDelta());
+        shadowMesh?.update(plane, lightPosition);
+        effect.render(scene, camera);
+    }
+});
